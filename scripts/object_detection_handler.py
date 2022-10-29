@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 class CustomHandler(BaseHandler, ABC):
     initialized = False
-    image_processing = transforms.Compose([transforms.ToTensor()])
 
     def initialize(self, ctx):
         self.manifest = ctx.manifest
@@ -52,27 +51,39 @@ class CustomHandler(BaseHandler, ABC):
         )
         self.model = getattr(transformers, config.architectures[0]).from_pretrained(            
             model_dir,
-            config=config
         )
-        self.processor = transformers.TrOCRProcessor.from_pretrained(
-            model_dir
-        )
+        try:
+            self.feature_extractor = transformers.AutoFeatureExtractor.from_pretrained(
+                model_dir
+            )
+        except:
+            self.feature_extractor = None
+        try:
+            self.processor = transformers.AutoProcessor.from_pretrained(
+                model_dir
+            )
+        except:
+            self.processor = None
         self.model.eval()
         self.initialized = True
+
 
     def handle(self, data, context):
         retval = []
         images = []
         for row in data:
-            image = Image.open(io.BytesIO(row.get("data"))).convert("RGB")
-            pixel_values = self.processor(image, return_tensors="pt").pixel_values 
-            generated_ids = self.model.generate(pixel_values)
-            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-            retval.append(
-                {
-                    "bounding_box" : [0, 0, image.size[0], image.size[1]],
-                    "text" : generated_text,
-                    "probability" : 1.0
-                }
-            )
-        return retval
+            image = Image.open(io.BytesIO(row.get("data")))
+            inputs = self.feature_extractor(image, return_tensors="pt")
+            outputs = self.model(**inputs)
+            target_sizes = torch.tensor([image.size[::-1]])
+            results = self.feature_extractor.post_process(outputs, target_sizes=target_sizes)[0]                
+            for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+                box = [round(i, 2) for i in box.tolist()]
+                retval.append(
+                    {
+                        "score" : score.item(),
+                        "label" : self.model.config.id2label[label.item()],
+                        "bounding_box" : box
+                    }
+                )
+        return [retval]

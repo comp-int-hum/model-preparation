@@ -9,6 +9,7 @@ import tempfile
 import subprocess
 import shutil
 import shlex
+from datetime import datetime
 from glob import glob
 import logging
 from importlib import import_module
@@ -29,15 +30,34 @@ def transformer_prep(args, path):
         args.parameters_url
     )
     model = getattr(transformers, config.architectures[0]).from_pretrained(
-    #model = transformers.AutoModel.from_pretrained(
         args.parameters_url,
         config=config
     )
-    processor = getattr(transformers, "{}Processor".format(args.model_class_name)).from_pretrained(
-        args.parameters_url
-    )
+    try:
+        processor = getattr(transformers, "{}Processor".format(args.model_class_name)).from_pretrained(
+            args.parameters_url
+        )
+    except:
+        processor = None
+    try:
+        feature_extractor = transformers.AutoFeatureExtractor.from_pretrained(
+            args.parameters_url
+        )
+    except:
+        feature_extractor = None
+    try:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            args.parameters_url
+        )
+    except:
+        tokenizer = None
     model.save_pretrained(path)
-    processor.save_pretrained(path)
+    if processor:
+        processor.save_pretrained(path)
+    if tokenizer:
+        tokenizer.save_pretrained(path)        
+    if feature_extractor:
+        feature_extractor.save_pretrained(path)        
     return [f for f in glob(os.path.join(path, "*")) if not os.path.basename(f) == "pytorch_model.bin"]
 
 
@@ -49,11 +69,12 @@ if __name__== "__main__":
 
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--model-name", dest="model_name", required=True)
-    parser.add_argument("--model-version", dest="model_version", default=1.0, required=True)
+    parser.add_argument("--model_name", dest="model_name", required=True)
+    parser.add_argument("--model_version", dest="model_version", default=1.0, required=True)
     parser.add_argument("--handler", dest="handler", default="object_detector", required=True)
-    parser.add_argument("--dry-run", dest="dry_run", default=False, action="store_true")
-    parser.add_argument("--input-data", dest="input_data")
+    parser.add_argument("--dry_run", dest="dry_run", default=False, action="store_true")
+    parser.add_argument("--requirements", dest="requirements", default=[], nargs="*")
+    parser.add_argument("--input_data", dest="input_data")
     parser.add_argument("--output")
 
     subs = parser.add_subparsers(
@@ -65,15 +86,13 @@ if __name__== "__main__":
         help=""
     )
     transformer_parser.add_argument(
-        "--model-class-name",
-        default="TrOCR",
+        "--model_class_name",
         dest="model_class_name",
         required=True
     )
     transformer_parser.add_argument(
-        "--parameters-url",
+        "--parameters_url",
         dest="parameters_url",
-        default="microsoft/trocr-base-handwritten",
         required=True
     )
     #transformer_parser.add_argument(
@@ -105,12 +124,15 @@ if __name__== "__main__":
     try:
         logging.info("Save model and other needed files under '%s'", path)
         fnames = args.prep_func(args, path)
+        if args.requirements:
+            with open(os.path.join(path, "requirements.txt"), "wt") as ofd:
+                ofd.write("\n".join(args.requirements))
         os.mkdir(os.path.join(path, "MAR-INF"))
         with open(os.path.join(path, "MAR-INF/MANIFEST.json"), "wt") as ofd:
             ofd.write(
                 json.dumps(
                     {
-                        "createdOn": "29/08/2022 19:29:32",
+                        "createdOn": datetime.now().isoformat(),
                         "runtime": "python",
                         "model": {
                             "modelName": args.model_name,
@@ -153,8 +175,9 @@ if __name__== "__main__":
             handler.initialize(ctx)
             ctx.get_request_header = lambda x, y : False
             if args.input_data:
-                image = Image.open(args.input_data).convert("RGB")
-                logger.info("Dry run response: %s", handler.handle([{"data" : image}], ctx))
+                with open(args.input_data, "rb") as ifd:
+                    data = ifd.read()
+                logger.info("Dry run response: %s", handler.handle([{"data" : data}], ctx))
         else:
             cmd = [
                 "torch-model-archiver",
@@ -165,6 +188,8 @@ if __name__== "__main__":
                 "--extra-files", ",".join(fnames),
                 "--export-path", path,
             ]
+            if args.requirements:
+                cmd += ["--requirements-file", os.path.join(path, "requirements.txt")]
             logging.info("invoking '%s'", shlex.join(cmd))
             pid = subprocess.Popen(cmd)
             pid.communicate()

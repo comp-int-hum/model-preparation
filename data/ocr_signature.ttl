@@ -1,0 +1,5 @@
+@prefix ns1: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix cdh: <http://cdh.jhu.edu/models#> .
+
+cdh:InputShape a ns1:NodeShape ;

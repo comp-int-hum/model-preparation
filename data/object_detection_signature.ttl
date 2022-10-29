@@ -1,0 +1,46 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix so: <https://schema.org/> .
+@prefix cdh: <http://cdh.jhu.edu/> .
+
+
+cdh:InputShape
+    a sh:NodeShape ;
+    sh:closed true ;
+    sh:property [
+        sh:path cdh:image ;
+        sh:class so:Image ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:targetClass cdh:Input .
+
+
+cdh:AnnotationShape a sh:NodeShape ;
+    sh:closed true ;
+    sh:property [
+        sh:path cdh:x ;
+        sh:datatype xsd:integer ;
+    ] ;
+    sh:property [
+        sh:path cdh:y ;
+        sh:datatype xsd:integer ;
+    ] ;
+    sh:property [
+        sh:path cdh:text ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:path cdh:probability ;
+        sh:datatype xsd:double ;
+    ] ;
+    sh:targetClass cdh:Annotation .
+
+
+cdh:OutputShape a sh:NodeShape ;
+    sh:closed true ;
+    sh:property [
+        sh:path cdh:possibleObject ;
+        sh:class cdh:Annotation ;
+    ] ;
+    sh:targetClass cdh:Output .

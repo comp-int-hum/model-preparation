@@ -22,15 +22,69 @@ vars = Variables("custom.py")
 
 vars.AddVariables(
     (
+        "OUTPUT_WIDTH",
+        "",
+        1000
+    ),
+    (
         "MODELS",
         "",
         [
+            {
+                "MODEL_NAME" : "trocr_printed",
+                "MODEL_VERSION" : 1.0,
+                "HANDLER" : "scripts/ocr_handler.py",
+                "STYLE" : "transformers",
+                "MODEL_CLASS_NAME" : "TrOCR",
+                "PARAMETERS_URL" : "microsoft/trocr-base-printed"
+            },
+            {
+                "MODEL_NAME" : "trocr_handwritten",
+                "MODEL_VERSION" : 1.0,
+                "HANDLER" : "scripts/ocr_handler.py",
+                "STYLE" : "transformers",
+                "MODEL_CLASS_NAME" : "TrOCR",
+                "PARAMETERS_URL" : "microsoft/trocr-base-handwritten"
+            },
+            {
+                "MODEL_NAME" : "resnet50",
+                "MODEL_VERSION" : 1.0,
+                "HANDLER" : "scripts/object_detection_handler.py",
+                "STYLE" : "transformers",
+                "MODEL_CLASS_NAME" : "DetrForObjectDetection",
+                "PARAMETERS_URL" : "facebook/detr-resnet-50",
+            },
+            {
+                "MODEL_NAME" : "opt125m",
+                "MODEL_VERSION" : 1.0,
+                "HANDLER" : "scripts/text_generation_handler.py",
+                "STYLE" : "transformers",
+                "MODEL_CLASS_NAME" : "OPTForCausalLM",
+                "PARAMETERS_URL" : "facebook/opt-125m"
+            },
+            {
+                "MODEL_NAME" : "bloom560m",
+                "MODEL_VERSION" : 1.0,
+                "HANDLER" : "scripts/text_generation_handler.py",
+                "STYLE" : "transformers",
+                "MODEL_CLASS_NAME" : "BloomForCausalLM",
+                "PARAMETERS_URL" : "bigscience/bloom-560m"
+            }
         ]
     ),
 )
 
-env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".tgz",
-                  tools=["default"],
+env = Environment(
+    variables=vars,
+    ENV=os.environ,
+    TARFLAGS="-c -z",
+    TARSUFFIX=".tgz",
+    tools=["default"],
+    BUILDERS={
+        "PackageModel" : Builder(
+            action="python scripts/package_model.py --model_name ${MODEL_NAME} --model_version ${MODEL_VERSION} --handler ${HANDLER} --requirements ${REQUIREMENTS} --output ${TARGETS[0]} ${STYLE} --model_class_name ${MODEL_CLASS_NAME} --parameters_url ${PARAMETERS_URL}"
+        )
+    }
 )
 
 # function for width-aware printing of commands
@@ -46,3 +100,16 @@ env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 # and how we decide if a dependency is out of date
 env.Decider("timestamp-newer")
 
+#image_classifier
+#object_detector
+#text_classifier
+#image_segmenter
+
+for model in env["MODELS"]:
+    pkg = env.PackageModel(
+        os.path.join("work/{}.mar".format(model["MODEL_NAME"])),
+        [],
+        **model
+    )
+    if os.path.exists(model["HANDLER"]):
+        env.Depends(pkg, [model["HANDLER"], "scripts/package_model.py"])
